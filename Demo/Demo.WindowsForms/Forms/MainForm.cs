@@ -64,19 +64,19 @@ namespace Demo.WindowsForms
                 //                          
 
                 // set cache mode only if no internet available
-                if (!Stuff.PingNetwork("google.com"))
-                {
-                    MainMap.Manager.Mode = AccessMode.CacheOnly;
-                    MessageBox.Show("No internet connection available, going to CacheOnly mode.", "GMap.NET - Demo.WindowsForms", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
+                //if (!Stuff.PingNetwork("google.com"))
+                //{
+                //    MainMap.Manager.Mode = AccessMode.CacheOnly;
+                //    MessageBox.Show("No internet connection available, going to CacheOnly mode.", "GMap.NET - Demo.WindowsForms", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                //}
 
                 //----------------------------------------
                 // Config Map at Startup
                 //----------------------------------------
-                MainMap.MapProvider = GMapProviders.GoogleMap;
+                MainMap.MapProvider = GMapProviders.OpenStreetMap;
 
-                OpenStreetMapGraphHopperProvider.Instance.ApiKey = Stuff.OpenStreetMapsGraphHopperApiKey;
-                GoogleMapProvider.Instance.ApiKey = Stuff.GoogleMapsApiKey;
+                //OpenStreetMapGraphHopperProvider.Instance.ApiKey = Stuff.OpenStreetMapsGraphHopperApiKey;
+                //GoogleMapProvider.Instance.ApiKey = Stuff.GoogleMapsApiKey;
 
                 // Custom Map Provider
                 //MainMap.MapProvider = GMapProviders.CustomMap;
@@ -86,14 +86,14 @@ namespace Demo.WindowsForms
                 //----------------------------------------
                 // Initial Position
                 //----------------------------------------
-                MainMap.Position = new PointLatLng(54.6961334816182, 25.2985095977783); // Lithuania, Vilnius
+                MainMap.Position = new PointLatLng(43.650463712188845, -72.30774540610462);
                 MainMap.MinZoom = 0;
                 MainMap.MaxZoom = 24;
                 MainMap.Zoom = 9;
 
                 textBoxLat.Text = MainMap.Position.Lat.ToString(CultureInfo.InvariantCulture);
                 textBoxLng.Text = MainMap.Position.Lng.ToString(CultureInfo.InvariantCulture);
-                textBoxGeo.Text = "Lithuania, Vilnius";
+                textBoxGeo.Text = "West Lebanon, NH";
               
 
                 MainMap.ScaleMode = ScaleModes.Fractional;
@@ -154,12 +154,6 @@ namespace Demo.WindowsForms
                 // Background Workers
                 //----------------------------------------
 
-                // vehicle demo ([jokubokla]: Doesn't seem to work anymore, to be investigated)
-                _transportWorker.DoWork += transport_DoWork;
-                _transportWorker.ProgressChanged += transport_ProgressChanged;
-                _transportWorker.WorkerSupportsCancellation = true;
-                _transportWorker.WorkerReportsProgress = true;
-
                 // performance demo
                 _timerPerf.Tick += timer_Tick;
 
@@ -196,35 +190,34 @@ namespace Demo.WindowsForms
 
                 // add my city location for demo
                 // [jokubokla]: The stuff down below doesn't work anymore either, but I leave it in case someone wants to fix it
-                GeoCoderStatusCode status;
-                var pos = MainMap.GeocodingProvider.GetPoint("Lithuania, Vilnius", out status);
+                //GeoCoderStatusCode status;
+                //var pos = MainMap.GeocodingProvider.GetPoint("Lithuania, Vilnius", out status);
 
-                if (pos != null && status == GeoCoderStatusCode.OK)
-                {
-                    _currentMarker.Position = pos.Value;
+                //if (pos != null && status == GeoCoderStatusCode.OK)
+                //{
+                //    _currentMarker.Position = pos.Value;
 
-                    GMapMarker myCity = new GMarkerGoogle(pos.Value, GMarkerGoogleType.green_small);
-                    myCity.ToolTipMode = MarkerTooltipMode.Always;
-                    myCity.ToolTipText = "Welcome to Lithuania! ;}";
-                    Objects.Markers.Add(myCity);
+                //    GMapMarker myCity = new GMarkerGoogle(pos.Value, GMarkerGoogleType.green_small);
+                //    myCity.ToolTipMode = MarkerTooltipMode.Always;
+                //    myCity.ToolTipText = "Welcome to Lithuania! ;}";
+                //    Objects.Markers.Add(myCity);
 
-                    // add some more points in lithuania
-                    AddLocationLithuania("Kaunas");
-                    AddLocationLithuania("Klaipėda");
-                    AddLocationLithuania("Šiauliai");
-                    AddLocationLithuania("Panevėžys");
-                }
-                else
-                {
-                    Debug.WriteLine("GeoCoderStatusCode = " + status.ToString()); // REQUEST_DENIED I assume
-                }
+                //    // add some more points in lithuania
+                //    AddLocationLithuania("Kaunas");
+                //    AddLocationLithuania("Klaipėda");
+                //    AddLocationLithuania("Šiauliai");
+                //    AddLocationLithuania("Panevėžys");
+                //}
+                //else
+                //{
+                //    Debug.WriteLine("GeoCoderStatusCode = " + status.ToString()); // REQUEST_DENIED I assume
+                //}
 
-                if (Objects.Markers.Count > 0)
-                {
-                    MainMap.ZoomAndCenterMarkers(null);
-                }
-
-                RegeneratePolygon();
+                //if (Objects.Markers.Count > 0)
+                //{
+                //    MainMap.ZoomAndCenterMarkers(null);
+                //}
+                //RegeneratePolygon();
 
                 try
                 {
@@ -341,138 +334,6 @@ namespace Demo.WindowsForms
         }
 
         System.Windows.Forms.Timer _timerPerf = new System.Windows.Forms.Timer();
-        #endregion
-
-
-        #region -- transport demo --
-
-        // [jokubokla]: The transport demo doesn't seem to work. Presumably because a public transportation
-        // webservice in Vilnius has a new API
-
-        BackgroundWorker _transportWorker = new BackgroundWorker();
-
-
-        readonly List<VehicleData> _trolleybus = new List<VehicleData>();
-        readonly Dictionary<int, GMapMarker> _trolleybusMarkers = new Dictionary<int, GMapMarker>();
-
-        readonly List<VehicleData> _bus = new List<VehicleData>();
-        readonly Dictionary<int, GMapMarker> _busMarkers = new Dictionary<int, GMapMarker>();
-
-        bool _firstLoadTrasport = true;
-        GMapMarker _currentTransport;
-
-        void transport_ProgressChanged(object sender, ProgressChangedEventArgs e)
-        {
-            // stops immediate marker/route/polygon invalidations;
-            // call Refresh to perform single refresh and reset invalidation state
-            MainMap.HoldInvalidation = true;
-
-            lock (_trolleybus)
-            {
-                foreach (var d in _trolleybus)
-                {
-                    GMapMarker marker;
-
-                    if (!_trolleybusMarkers.TryGetValue(d.Id, out marker))
-                    {
-                        marker = new GMarkerGoogle(new PointLatLng(d.Lat, d.Lng), GMarkerGoogleType.red_small);
-                        marker.Tag = d.Id;
-                        marker.ToolTipMode = MarkerTooltipMode.OnMouseOver;
-
-                        _trolleybusMarkers[d.Id] = marker;
-                        Objects.Markers.Add(marker);
-                    }
-                    else
-                    {
-                        marker.Position = new PointLatLng(d.Lat, d.Lng);
-                        //(marker as GMarkerGoogle).Bearing = (float?) d.Bearing;
-                    }
-                    marker.ToolTipText = "Trolley " + d.Line + (d.Bearing.HasValue ? ", bearing: " + d.Bearing.Value.ToString() : string.Empty) + ", " + d.Time;
-
-                    if (_currentTransport != null && _currentTransport == marker)
-                    {
-                        MainMap.Position = marker.Position;
-                        if (d.Bearing.HasValue)
-                        {
-                            MainMap.Bearing = (float)d.Bearing.Value;
-                        }
-                    }
-                }
-            }
-
-            lock (_bus)
-            {
-                foreach (var d in _bus)
-                {
-                    GMapMarker marker;
-
-                    if (!_busMarkers.TryGetValue(d.Id, out marker))
-                    {
-                        marker = new GMarkerGoogle(new PointLatLng(d.Lat, d.Lng), GMarkerGoogleType.green_small);
-                        marker.Tag = d.Id;
-                        marker.ToolTipMode = MarkerTooltipMode.OnMouseOver;
-
-                        _busMarkers[d.Id] = marker;
-                        Objects.Markers.Add(marker);
-                    }
-                    else
-                    {
-                        marker.Position = new PointLatLng(d.Lat, d.Lng);
-                        //(marker as GMarkerGoogle).Bearing = (float?) d.Bearing;
-                    }
-                    marker.ToolTipText = "Bus " + d.Line + (d.Bearing.HasValue ? ", bearing: " + d.Bearing.Value.ToString() : string.Empty) + ", " + d.Time;
-
-                    if (_currentTransport != null && _currentTransport == marker)
-                    {
-                        MainMap.Position = marker.Position;
-                        if (d.Bearing.HasValue)
-                        {
-                            MainMap.Bearing = (float)d.Bearing.Value;
-                        }
-                    }
-                }
-            }
-
-            if (_firstLoadTrasport)
-            {
-                MainMap.Zoom = 5;
-                MainMap.ZoomAndCenterMarkers("objects");
-                _firstLoadTrasport = false;
-            }
-            MainMap.Refresh();
-        }
-
-        void transport_DoWork(object sender, DoWorkEventArgs e)
-        {
-            while (!_transportWorker.CancellationPending)
-            {
-                try
-                {
-                    #region -- old vehicle demo --
-                    lock (_trolleybus)
-                    {
-                        Stuff.GetVilniusTransportData(TransportType.TrolleyBus, string.Empty, _trolleybus);
-                    }
-
-                    lock (_bus)
-                    {
-                        Stuff.GetVilniusTransportData(TransportType.Bus, string.Empty, _bus);
-                    }
-                    #endregion
-
-                    _transportWorker.ReportProgress(100);
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine("transport_DoWork: " + ex.ToString());
-                }
-                Thread.Sleep(2 * 1000);
-            }
-
-            _trolleybusMarkers.Clear();
-            _busMarkers.Clear();
-        }
-
         #endregion
 
 
@@ -842,19 +703,6 @@ namespace Demo.WindowsForms
                             v.ToolTipText = pos.Value.Address;
                         }
                         MainMap.Invalidate(false);
-                    }
-                }
-                else
-                {
-                    if (item.Tag != null)
-                    {
-                        if (_currentTransport != null)
-                        {
-                            _currentTransport.ToolTipMode = MarkerTooltipMode.OnMouseOver;
-                            _currentTransport = null;
-                        }
-                        _currentTransport = item;
-                        _currentTransport.ToolTipMode = MarkerTooltipMode.Always;
                     }
                 }
             }
@@ -1239,12 +1087,6 @@ namespace Demo.WindowsForms
             else if (e.KeyCode == Keys.Escape)
             {
                 MainMap.Bearing = 0;
-
-                if (_currentTransport != null && !MainMap.IsMouseOverMarker)
-                {
-                    _currentTransport.ToolTipMode = MarkerTooltipMode.OnMouseOver;
-                    _currentTransport = null;
-                }
             }
         }
 
@@ -1289,23 +1131,6 @@ namespace Demo.WindowsForms
             {
                 // stop performance test
                 _timerPerf.Stop();
-            }
-
-            // vehicle demo
-            if (radioButtonVehicle.Checked)
-            {
-                if (!_transportWorker.IsBusy)
-                {
-                    _firstLoadTrasport = true;
-                    _transportWorker.RunWorkerAsync();
-                }
-            }
-            else
-            {
-                if (_transportWorker.IsBusy)
-                {
-                    _transportWorker.CancelAsync();
-                }
             }
         }
 
